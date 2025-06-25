@@ -34,7 +34,7 @@ A lightweight, standalone web app for composing Astro blog posts in Markdown wit
 
 ## Getting Started
 
-To run locally, simply open the `meblog-md-editor.html` file in your browser—no server or build step required.
+To run locally, simply open the `index.html` file in your browser—no server or build step required.
 
 ### Prerequisites
 
@@ -49,9 +49,9 @@ To run locally, simply open the `meblog-md-editor.html` file in your browser—n
    ```
 2. Open the editor:
    ```bash
-   open "meblog-md-editorr.html"
+   open "index.html"
    ```
-   Or double-click `meblog-md-editor.html`.
+   Or double-click `index.html`.
 
 ## Usage
 
