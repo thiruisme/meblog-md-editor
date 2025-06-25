@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Astro Blog Markdown Editor</title>
+  <style>
+    body { font-family: sans-serif; margin: 0; padding: 0; background: #f5f5f5; color: #333; }
+    #app { max-width: 800px; margin: 2rem auto; background: #fff; padding: 1rem 2rem; box-shadow: 0 2px 8px rgba(0,0,0,0.1); border-radius: 8px; }
+    h1, h2, h3 { color: #2b7a57; }
+    form div { margin-bottom: 1rem; }
+    label { display: block; font-weight: bold; margin-bottom: 0.3rem; }
+    input[type="text"], input[type="date"], input[type="url"], textarea { width: 100%; padding: 0.5rem; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; }
+    textarea { height: 200px; font-family: monospace; resize: vertical; }
+    button, .md-button { padding: 0.5rem 1rem; border: none; background: #2b7a57; color: #fff; border-radius: 4px; cursor: pointer; margin-right: 0.5rem; font-size: 0.9rem; transition: background-color 0.2s; }
+    button:hover, .md-button:hover { background: #246648; }
+    pre { background: #272822; color: #f8f8f2; padding: 1rem; overflow-x: auto; border-radius: 4px; white-space: pre-wrap; word-wrap: break-word; }
+    /* Tag Pills */
+    .tags-container { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; padding: 0.5rem; border: 1px solid #ccc; border-radius: 4px; }
+    .tag-pill { background: #2b7a57; color: #fff; padding: 0.3rem 0.6rem; border-radius: 999px; font-size: 0.9rem; display: inline-flex; align-items: center; }
+    .tag-pill span { margin-right: 0.5rem; }
+    .tag-pill button { background: transparent; border: none; color: #fff; cursor: pointer; font-size: 1.2rem; line-height: 1; padding: 0 0 0 0.2rem; margin: 0; }
+    .tags-input { border: none; flex: 1; padding: 0.4rem; outline: none; min-width: 150px; }
+    /* Dropzone */
+    .dropzone { border: 2px dashed #ccc; padding: 1rem; text-align: center; border-radius: 4px; cursor: pointer; transition: background-color 0.2s, border-color 0.2s; }
+    .dropzone:focus { outline: 2px solid #246648; outline-offset: 2px; }
+    .dropzone.hover { background: #eef; border-color: #246648; }
+    #thumbnail-name, #image-name { margin-top: 0.5rem; font-style: italic; color: #555; }
+    /* Modal */
+    .modal { display: none; position: fixed; z-index: 1000; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.6); justify-content: center; align-items: center; }
+    .modal-content { background: #fff; padding: 1.5rem 2rem; border-radius: 8px; max-width: 450px; width: 90%; box-shadow: 0 5px 15px rgba(0,0,0,0.3); }
+    .modal-content h3 { margin-top: 0; }
+    .modal-actions { text-align: right; margin-top: 1.5rem; }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <h1>Astro Blog Markdown Editor</h1>
+    <form id="post-form">
+      <div>
+        <label for="base-image-path-config">Base Image Path</label>
+        <input type="text" id="base-image-path-config" value="/images/">
+      </div>
+      <div>
+        <label for="article-identifier">Article Identifier (for image paths)</label>
+        <input type="text" id="article-identifier" placeholder="e.g., 001-my-post-slug">
+      </div>
+      <hr style="border:none; border-top:1px solid #eee; margin: 1.5rem 0;">
+      <div>
+        <label for="title">Title</label>
+        <input type="text" id="title" placeholder="Reclaiming a Cozy Corner on the Internet" required>
+      </div>
+      <div>
+        <label for="date">Date</label>
+        <input type="date" id="date" required>
+      </div>
+      <div>
+        <label for="thumbnail-drop">Thumbnail (goes in /covers/)</label>
+        <div id="thumbnail-drop" class="dropzone" role="button" tabindex="0">Drag & drop image or click to select</div>
+        <input type="file" id="thumbnail-file-input" accept="image/*" hidden>
+        <div id="thumbnail-name"></div>
+      </div>
+      <div>
+        <label for="excerpt">Excerpt</label>
+        <input type="text" id="excerpt" placeholder="A small personal space on the internet…">
+      </div>
+      <div>
+        <label for="tags-input">Tags</label>
+        <div class="tags-container" id="tags-container">
+          <input type="text" id="tags-input" class="tags-input" placeholder="Type tag, then comma or Enter">
+        </div>
+      </div>
+      <div>
+        <label for="content">Content</label>
+        <div id="md-toolbar" style="margin-bottom:0.5rem;">
+          <button class="md-button" data-action="bold" type="button">Bold</button>
+          <button class="md-button" data-action="italic" type="button">Italic</button>
+          <button class="md-button" data-action="blockquote" type="button">Blockquote</button>
+          <button class="md-button" data-action="pullquote" type="button">Pullquote</button>
+          <button class="md-button" data-action="image" type="button">Image</button>
+          <button class="md-button" id="undo-btn" type="button">Undo</button>
+        </div>
+        <textarea id="content" placeholder="Start writing your post content here..."></textarea>
+      </div>
+    </form>
+    <button id="generate-button" type="button">Generate Markdown</button>
+    <button id="copy-button" type="button" style="margin-left: 1rem;">Copy to Clipboard</button>
+    <h2>Markdown Output</h2>
+    <pre id="markdown-output"></pre>
+  </div>
+
+  <!-- Image modal -->
+  <div id="image-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="image-modal-title">
+    <div class="modal-content">
+      <h3 id="image-modal-title">Insert Article Image</h3>
+      <label for="image-drop">Image File (goes in /articles/[identifier]/)</label>
+      <div id="image-drop" class="dropzone" role="button" tabindex="0">Drag & drop image or click to select</div>
+      <input type="file" id="image-file-input" accept="image/*" hidden>
+      <div id="image-name"></div>
+      <div style="margin-top:1rem;">
+        <label for="alt-text-input">Alt Text</label>
+        <input type="text" id="alt-text-input" style="width:100%;padding:0.4rem;border:1px solid #ccc;border-radius:4px;">
+      </div>
+      <div class="modal-actions">
+        <button id="image-insert-button" type="button">Insert</button>
+        <button id="image-cancel-button" type="button">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    (function() {
+      'use strict';
+
+      // --- DOM Element Caching ---
+      const postForm = document.getElementById('post-form');
+      const baseImagePathInput = document.getElementById('base-image-path-config');
+      const articleIdentifierInput = document.getElementById('article-identifier');
+      const titleInput = document.getElementById('title');
+      const dateInput = document.getElementById('date');
+      const thumbnailDropzone = document.getElementById('thumbnail-drop');
+      const thumbnailFileInput = document.getElementById('thumbnail-file-input');
+      const thumbnailNameEl = document.getElementById('thumbnail-name');
+      const excerptInput = document.getElementById('excerpt');
+      const tagsContainer = document.getElementById('tags-container');
+      const tagInput = document.getElementById('tags-input');
+      const contentTextArea = document.getElementById('content');
+      const markdownToolbar = document.getElementById('md-toolbar');
+      const undoButton = document.getElementById('undo-btn');
+      const generateButton = document.getElementById('generate-button');
+      const copyButton = document.getElementById('copy-button');
+      const markdownOutput = document.getElementById('markdown-output');
+      // Modal elements
+      const imageModal = document.getElementById('image-modal');
+      const imageDropzone = document.getElementById('image-drop');
+      const imageFileInput = document.getElementById('image-file-input');
+      const imageNameEl = document.getElementById('image-name');
+      const altTextInput = document.getElementById('alt-text-input');
+      const imageInsertButton = document.getElementById('image-insert-button');
+      const imageCancelButton = document.getElementById('image-cancel-button');
+
+      // --- State Variables ---
+      let thumbnailFile = null;
+      let imageModalFile = null;
+      const tags = [];
+      const undoStack = [];
+      let modalKeydownListener = null;
+
+      // --- Initialization ---
+      function initialize() {
+        dateInput.value = new Date().toISOString().split('T')[0];
+        postForm.addEventListener('submit', (e) => e.preventDefault());
+        setupEventListeners();
+        pushUndoState();
+      }
+
+      // --- Event Listener Setup ---
+      function setupEventListeners() {
+        contentTextArea.addEventListener('input', pushUndoState);
+        undoButton.addEventListener('click', handleUndo);
+        setupDropzone(thumbnailDropzone, thumbnailFileInput, (file) => {
+          thumbnailFile = file;
+          thumbnailNameEl.textContent = file.name;
+        });
+        tagInput.addEventListener('keydown', handleTagInput);
+        tagsContainer.addEventListener('click', handleTagRemoval);
+        markdownToolbar.addEventListener('click', handleToolbarAction);
+        setupDropzone(imageDropzone, imageFileInput, (file) => {
+          imageModalFile = file;
+          imageNameEl.textContent = file.name;
+        });
+        imageInsertButton.addEventListener('click', handleImageInsert);
+        imageCancelButton.addEventListener('click', closeImageModal);
+        generateButton.addEventListener('click', generateMarkdown);
+        copyButton.addEventListener('click', copyMarkdown);
+      }
+
+      // --- Core Functionality ---
+      function setupDropzone(dropzoneEl, fileInputEl, onFileSet) {
+        dropzoneEl.addEventListener('click', () => fileInputEl.click());
+        dropzoneEl.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            fileInputEl.click();
+          }
+        });
+        ['dragenter', 'dragover'].forEach(eventName => {
+          dropzoneEl.addEventListener(eventName, (e) => {
+            e.preventDefault();
+            dropzoneEl.classList.add('hover');
+          });
+        });
+        ['dragleave', 'drop'].forEach(eventName => {
+          dropzoneEl.addEventListener(eventName, (e) => {
+            e.preventDefault();
+            dropzoneEl.classList.remove('hover');
+          });
+        });
+        dropzoneEl.addEventListener('drop', (e) => {
+          if (e.dataTransfer.files.length) {
+            onFileSet(e.dataTransfer.files[0]);
+          }
+        });
+        fileInputEl.addEventListener('change', (e) => {
+          if (e.target.files.length) {
+            onFileSet(e.target.files[0]);
+          }
+        });
+      }
+
+      function pushUndoState() {
+        undoStack.push(contentTextArea.value);
+        if (undoStack.length > 50) undoStack.shift();
+      }
+
+      function handleUndo() {
+        if (undoStack.length > 1) {
+          undoStack.pop();
+          contentTextArea.value = undoStack[undoStack.length - 1] || '';
+        }
+      }
+
+      function renderTags() {
+        tagsContainer.querySelectorAll('.tag-pill').forEach(pill => pill.remove());
+        tags.forEach((tag, index) => {
+          const pill = document.createElement('div');
+          pill.className = 'tag-pill';
+          pill.innerHTML = `<span>${tag}</span><button data-index="${index}" aria-label="Remove tag: ${tag}">&times;</button>`;
+          tagsContainer.insertBefore(pill, tagInput);
+        });
+      }
+
+      function handleTagInput(e) {
+        if (e.key === 'Enter' || e.key === ',') {
+          e.preventDefault();
+          const newTag = tagInput.value.trim().replace(/,$/, '').trim();
+          if (newTag && !tags.includes(newTag)) {
+            tags.push(newTag);
+          }
+          tagInput.value = '';
+          renderTags();
+        }
+      }
+
+      function handleTagRemoval(e) {
+        if (e.target.tagName === 'BUTTON' && e.target.dataset.index) {
+          tags.splice(e.target.dataset.index, 1);
+          renderTags();
+        }
+      }
+
+      function handleToolbarAction(e) {
+        const action = e.target.dataset.action;
+        if (!action) return;
+        const start = contentTextArea.selectionStart;
+        const end = contentTextArea.selectionEnd;
+        const selectedText = contentTextArea.value.slice(start, end);
+        let replacement = '';
+        switch (action) {
+          case 'bold': replacement = `**${selectedText}**`; break;
+          case 'italic': replacement = `*${selectedText}*`; break;
+          case 'blockquote': replacement = selectedText.split('\n').map(line => `> ${line}`).join('\n'); break;
+          case 'pullquote': replacement = `<blockquote class="pullquote">\n${selectedText}\n</blockquote>`; break;
+          case 'image': showImageModal(); return;
+        }
+        contentTextArea.setRangeText(replacement, start, end, 'end');
+        pushUndoState();
+        contentTextArea.focus();
+      }
+
+      function showImageModal() {
+        imageModal.style.display = 'flex';
+        altTextInput.focus();
+        trapFocus(imageModal);
+        window.addEventListener('keydown', handleModalEscape);
+      }
+
+      function closeImageModal() {
+        imageModal.style.display = 'none';
+        imageNameEl.textContent = '';
+        altTextInput.value = '';
+        imageModalFile = null;
+        if (modalKeydownListener) {
+            imageModal.removeEventListener('keydown', modalKeydownListener);
+        }
+        window.removeEventListener('keydown', handleModalEscape);
+        contentTextArea.focus();
+      }
+      
+      function handleModalEscape(e) {
+        if (e.key === 'Escape') closeImageModal();
+      }
+
+      function handleImageInsert() {
+        if (!imageModalFile) {
+          alert('Please select an image file first.');
+          return;
+        }
+        const articleIdentifier = articleIdentifierInput.value.trim();
+        if (!articleIdentifier) {
+            alert('Please enter an Article Identifier before inserting an image.');
+            articleIdentifierInput.focus();
+            return;
+        }
+
+        const altText = altTextInput.value || 'image description';
+        const baseImagePath = baseImagePathInput.value;
+        // Construct the specific path for an in-article image
+        const articleImagePath = `${baseImagePath}articles/${articleIdentifier}/${imageModalFile.name}`;
+        const markdown = `![${altText}](${articleImagePath})`;
+        
+        const start = contentTextArea.selectionStart;
+        contentTextArea.setRangeText(markdown, start, start, 'end');
+        pushUndoState();
+        closeImageModal();
+      }
+      
+      function trapFocus(element) {
+        const focusableEls = element.querySelectorAll('a[href]:not([disabled]), button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])');
+        const firstFocusableEl = focusableEls[0];
+        const lastFocusableEl = focusableEls[focusableEls.length - 1];
+        modalKeydownListener = function(e) {
+            if (e.key !== 'Tab') return;
+            if (e.shiftKey) {
+                if (document.activeElement === firstFocusableEl) {
+                    lastFocusableEl.focus();
+                    e.preventDefault();
+                }
+            } else {
+                if (document.activeElement === lastFocusableEl) {
+                    firstFocusableEl.focus();
+                    e.preventDefault();
+                }
+            }
+        };
+        element.addEventListener('keydown', modalKeydownListener);
+        firstFocusableEl.focus();
+      }
+
+      function generateMarkdown() {
+        const baseImagePath = baseImagePathInput.value;
+        const frontmatter = [
+          '---',
+          `title: "${titleInput.value.replace(/"/g, '\\"')}"`,
+          `date: ${dateInput.value}`,
+        ];
+
+        if (thumbnailFile) {
+          const thumbnailPath = `${baseImagePath}covers/${thumbnailFile.name}`;
+          frontmatter.push(`thumbnail: "${thumbnailPath}"`);
+        }
+        if (excerptInput.value) {
+          frontmatter.push(`excerpt: "${excerptInput.value.replace(/"/g, '\\"')}"`);
+        }
+        if (tags.length) {
+          frontmatter.push('tags:');
+          tags.forEach(tag => frontmatter.push(`  - ${tag}`));
+        }
+        frontmatter.push('---');
+
+        let body = '';
+        if (thumbnailFile) {
+          const thumbnailPath = `${baseImagePath}covers/${thumbnailFile.name}`;
+          const alt = excerptInput.value || titleInput.value;
+          body += `![${alt.replace(/]/g, '\\]')}](${thumbnailPath})\n\n`;
+        }
+        body += contentTextArea.value;
+
+        const finalMarkdown = frontmatter.join('\n') + '\n\n' + body;
+        markdownOutput.textContent = finalMarkdown;
+      }
+
+      function copyMarkdown() {
+        generateMarkdown();
+        if (!markdownOutput.textContent) {
+          alert('Nothing to copy!');
+          return;
+        }
+        navigator.clipboard.writeText(markdownOutput.textContent)
+          .then(() => alert('Markdown copied to clipboard!'))
+          .catch(err => {
+            console.error('Failed to copy text: ', err);
+            alert('Could not copy text. See console for details.');
+          });
+      }
+
+      initialize();
+    })();
+  </script>
+</body>
+</html>
